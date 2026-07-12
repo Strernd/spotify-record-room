@@ -778,8 +778,36 @@ input:focus-visible,
 .player-dock__meta strong { font-family: Georgia, "Times New Roman", serif; }
 .player-dock__meta > span:last-child { color: #c8bbb1; font-size: 0.76rem; }
 .player-dock .icon-button { flex: none; color: #ddd2c9; background: rgba(255,255,255,0.1); }
-.player-dock__embed { min-height: 152px; overflow: hidden; border-radius: 12px; background: #121212; }
-.player-dock__embed iframe { display: block; width: 100% !important; height: 152px !important; border: 0; border-radius: 12px; }
+.player-dock__controls {
+  display: grid;
+  grid-template-columns: 64px 36px 44px 36px minmax(180px, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 68px;
+  padding: 3px 4px;
+}
+.player-dock__art { width: 64px; height: 64px; border-radius: 7px; object-fit: cover; box-shadow: 0 5px 14px rgba(0,0,0,0.3); }
+.player-dock__art--empty { background: rgba(255,255,255,0.08); }
+.player-control {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #fffaf0;
+  background: rgba(255,255,255,0.11);
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+.player-control:hover { background: rgba(255,255,255,0.18); }
+.player-control:disabled { cursor: wait; opacity: 0.42; }
+.player-control:disabled:hover { background: rgba(255,255,255,0.1); }
+.player-control--primary { width: 44px; height: 44px; color: #0b1c11; background: var(--green); font-size: 0.95rem; }
+.player-control--primary:hover { background: #32d66c; }
+.player-progress { display: grid; grid-template-columns: 34px minmax(90px, 1fr) 34px; align-items: center; gap: 7px; color: #bdb1a8; font-size: 0.66rem; font-variant-numeric: tabular-nums; }
+.player-progress input { width: 100%; accent-color: var(--green); cursor: pointer; }
+.player-dock__error { margin: 6px 5px 0; color: #ffaaa0; }
 .player-dock__hint { margin: 7px 5px 0; color: #ab9f96; font-size: 0.68rem; }
 
 .track-list-wrap {
@@ -837,6 +865,12 @@ input:focus-visible,
   .player-dock { bottom: 8px; width: calc(100% - 16px); padding: 9px; border-radius: 13px; }
   .player-dock__eyebrow { display: none; }
   .player-dock__meta { grid-template-columns: minmax(0, 1fr); }
+  .player-dock__controls { grid-template-columns: 48px 34px 40px 34px minmax(0, 1fr); gap: 6px; }
+  .player-dock__art { width: 48px; height: 48px; }
+  .player-control { width: 34px; height: 34px; }
+  .player-control--primary { width: 40px; height: 40px; }
+  .player-progress { grid-template-columns: minmax(70px, 1fr); }
+  .player-progress > span { display: none; }
   .library-footer { flex-direction: column; gap: 3px; }
 }
 

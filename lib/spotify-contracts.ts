@@ -25,6 +25,7 @@ export type AlbumDetail = AlbumSummary & {
 
 export type AuthStatus = {
   authenticated: boolean;
+  playbackReady: boolean;
 };
 
 export type SearchResponse = {

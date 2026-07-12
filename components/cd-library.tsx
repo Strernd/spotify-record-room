@@ -373,6 +373,7 @@ export function CdLibrary() {
   const [albums, setAlbums] = useState<LibraryAlbum[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [playbackReady, setPlaybackReady] = useState(false);
   const [authState, setAuthState] = useState<RequestState>('loading');
   const [authMessage, setAuthMessage] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -393,6 +394,7 @@ export function CdLibrary() {
         if (!response.ok) throw await responseError(response, 'Could not check Spotify connection.');
         const status = (await response.json()) as AuthStatus;
         setAuthenticated(Boolean(status.authenticated));
+        setPlaybackReady(Boolean(status.playbackReady));
         setAuthState('success');
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -443,6 +445,10 @@ export function CdLibrary() {
 
   function playSelectedAlbum() {
     if (!selectedAlbum) return;
+    if (!playbackReady) {
+      window.location.assign('/api/auth/login');
+      return;
+    }
     playerRef.current?.play(selectedAlbum);
     setActivePlayerAlbumId(selectedAlbum.id);
     setPlayerVisible(true);
@@ -455,6 +461,7 @@ export function CdLibrary() {
       const response = await fetch('/api/auth/logout', { method: 'POST' });
       if (!response.ok) throw await responseError(response, 'Could not disconnect Spotify.');
       setAuthenticated(false);
+      setPlaybackReady(false);
       setAuthState('success');
       setSearchOpen(false);
     } catch (error) {
@@ -473,7 +480,7 @@ export function CdLibrary() {
   }
 
   return (
-    <main className={`library-app${albums.length > 0 && playerVisible ? ' library-app--player-open' : ''}`}>
+    <main className={`library-app${albums.length > 0 && playbackReady && playerVisible ? ' library-app--player-open' : ''}`}>
       <header className="library-header">
         <div className="library-brand">
           <span aria-hidden="true" className="library-brand__mark"><Icon name="music" /></span>
@@ -484,7 +491,12 @@ export function CdLibrary() {
         </div>
         <div className="library-header__actions">
           {authState === 'loading' && <LoadingSpinner label="Connecting…" />}
-          {authState !== 'loading' && authenticated && <span className="connection-status"><span /> Spotify connected</span>}
+          {authState !== 'loading' && authenticated && (
+            <span className="connection-status"><span /> {playbackReady ? 'Full playback authorized' : 'Spotify connected'}</span>
+          )}
+          {authenticated && !playbackReady && (
+            <a className="button button--spotify" href="/api/auth/login">Enable full player</a>
+          )}
           {authenticated ? (
             <button className="button button--quiet" disabled={authState === 'loading'} onClick={() => void logOut()} type="button">Disconnect</button>
           ) : (
@@ -528,7 +540,7 @@ export function CdLibrary() {
         <span>Stored locally in this browser</span>
       </footer>
 
-      {albums.length > 0 && (
+      {albums.length > 0 && playbackReady && (
         <SpotifyPlayerDock
           hidden={!playerVisible}
           initialAlbum={albums[0]}

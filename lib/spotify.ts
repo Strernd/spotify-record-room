@@ -18,8 +18,16 @@ export const SPOTIFY_COOKIE_NAMES = {
   accessToken: "spotify_access_token",
   refreshToken: "spotify_refresh_token",
   expiresAt: "spotify_expires_at",
+  scope: "spotify_scope",
   state: "spotify_oauth_state",
 } as const;
+
+export const SPOTIFY_PLAYBACK_SCOPES = [
+  "streaming",
+  "user-read-email",
+  "user-read-private",
+  "user-modify-playback-state",
+] as const;
 
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -129,6 +137,7 @@ export function getSpotifyAuthorizationUrl(state: string) {
     client_id: clientId,
     response_type: "code",
     redirect_uri: SPOTIFY_REDIRECT_URI,
+    scope: SPOTIFY_PLAYBACK_SCOPES.join(" "),
     state,
   });
 
@@ -158,6 +167,17 @@ export async function storeSpotifyTokens(tokens: TokenResponse) {
   if (tokens.refresh_token) {
     cookieStore.set(SPOTIFY_COOKIE_NAMES.refreshToken, tokens.refresh_token, tokenCookieOptions);
   }
+  if (tokens.scope) {
+    cookieStore.set(SPOTIFY_COOKIE_NAMES.scope, tokens.scope, tokenCookieOptions);
+  }
+}
+
+export async function hasSpotifyPlaybackScopes() {
+  const cookieStore = await cookies();
+  const grantedScopes = new Set(
+    (cookieStore.get(SPOTIFY_COOKIE_NAMES.scope)?.value ?? "").split(" ").filter(Boolean),
+  );
+  return SPOTIFY_PLAYBACK_SCOPES.every((scope) => grantedScopes.has(scope));
 }
 
 export async function clearSpotifyCookies() {
@@ -197,11 +217,12 @@ export async function getSpotifyAccessToken() {
   }
 }
 
-export async function spotifyFetch<T>(path: string): Promise<T> {
+export async function spotifyRequest(path: string, init: RequestInit = {}) {
   const accessToken = await getSpotifyAccessToken();
   const url = path.startsWith(`${SPOTIFY_API_BASE}/`) ? path : `${SPOTIFY_API_BASE}${path}`;
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    ...init,
+    headers: { ...init.headers, Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
 
@@ -221,6 +242,11 @@ export async function spotifyFetch<T>(path: string): Promise<T> {
     throw new SpotifyApiError(response.status, message);
   }
 
+  return response;
+}
+
+export async function spotifyFetch<T>(path: string): Promise<T> {
+  const response = await spotifyRequest(path);
   return response.json() as Promise<T>;
 }
 
