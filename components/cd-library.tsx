@@ -340,15 +340,18 @@ function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void })
     <button
       aria-label={`Open ${album.name} by ${album.artists.join(', ')}`}
       className="cd-spine"
+      data-spine-label={`${album.artists.join(', ')} — ${album.name}`}
       onClick={onOpen}
-      style={{ backgroundColor: background, color: contrastColor(background) }}
+      style={{ color: contrastColor(background) }}
       title={`${album.name} — ${album.artists.join(', ')}`}
       type="button"
     >
-      <span className="cd-spine__shine" />
-      <span className="cd-spine__label">
-        <span className="cd-spine__artist">{album.artists.join(', ')}</span>
-        <span className="cd-spine__title">{album.name}</span>
+      <span className="cd-spine__case" style={{ backgroundColor: background }}>
+        <span className="cd-spine__shine" />
+        <span className="cd-spine__label">
+          <span className="cd-spine__artist">{album.artists.join(', ')}</span>
+          <span className="cd-spine__title">{album.name}</span>
+        </span>
       </span>
     </button>
   );
