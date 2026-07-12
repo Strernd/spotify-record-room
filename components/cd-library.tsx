@@ -346,8 +346,10 @@ function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void })
       type="button"
     >
       <span className="cd-spine__shine" />
-      <span className="cd-spine__artist">{album.artists.join(', ')}</span>
-      <span className="cd-spine__title">{album.name}</span>
+      <span className="cd-spine__label">
+        <span className="cd-spine__artist">{album.artists.join(', ')}</span>
+        <span className="cd-spine__title">{album.name}</span>
+      </span>
     </button>
   );
 }
