@@ -20,6 +20,11 @@ import type {
 } from './cd-library-types';
 import { contrastColor, extractSpineColor } from '@/lib/spine-color';
 import { SpotifyPlayerDock, type SpotifyPlayerHandle } from './spotify-player-dock';
+import {
+  clearSavedSpotifyPlayback,
+  readSavedSpotifyPlayback,
+  type SavedSpotifyPlayback,
+} from './spotify-playback-storage';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
 const ALBUMS_PER_ROW = 12;
@@ -380,11 +385,24 @@ export function CdLibrary() {
   const [selectedAlbum, setSelectedAlbum] = useState<LibraryAlbum | null>(null);
   const playerRef = useRef<SpotifyPlayerHandle>(null);
   const [activePlayerAlbumId, setActivePlayerAlbumId] = useState<string | null>(null);
+  const [savedPlayback, setSavedPlayback] = useState<SavedSpotifyPlayback | null>(null);
   const [playerVisible, setPlayerVisible] = useState(true);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      setAlbums(readLibrary());
+      const library = readLibrary();
+      const playback = readSavedSpotifyPlayback();
+      const savedAlbum = playback
+        ? library.find(
+            (album) =>
+              album.id === playback.albumId &&
+              album.tracks.some((track) => track.id === playback.trackId),
+          )
+        : undefined;
+      if (playback && !savedAlbum) clearSavedSpotifyPlayback();
+      setAlbums(library);
+      setSavedPlayback(savedAlbum ? playback : null);
+      setActivePlayerAlbumId(savedAlbum?.id ?? null);
       setHydrated(true);
     });
     const controller = new AbortController();
@@ -436,6 +454,9 @@ export function CdLibrary() {
     if (!selectedAlbum) return;
     if (selectedAlbum.id === activePlayerAlbumId) {
       playerRef.current?.pause();
+      playerRef.current?.forget();
+      clearSavedSpotifyPlayback(selectedAlbum.id);
+      setSavedPlayback(null);
       setActivePlayerAlbumId(null);
       setPlayerVisible(false);
     }
@@ -478,6 +499,9 @@ export function CdLibrary() {
   function handleSpineKeyDown(event: ReactKeyboardEvent, album: LibraryAlbum) {
     if (event.key === 'Enter' || event.key === ' ') setSelectedAlbum(album);
   }
+
+  const playerAlbum =
+    albums.find((album) => album.id === activePlayerAlbumId) ?? albums[0];
 
   return (
     <main className={`library-app${albums.length > 0 && playbackReady && playerVisible ? ' library-app--player-open' : ''}`}>
@@ -543,7 +567,8 @@ export function CdLibrary() {
       {albums.length > 0 && playbackReady && (
         <SpotifyPlayerDock
           hidden={!playerVisible}
-          initialAlbum={albums[0]}
+          initialAlbum={playerAlbum}
+          initialPlayback={savedPlayback}
           onClose={() => setPlayerVisible(false)}
           ref={playerRef}
         />

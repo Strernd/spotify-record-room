@@ -4,10 +4,16 @@ import Script from 'next/script';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import type { LibraryAlbum } from './cd-library-types';
+import {
+  readSavedSpotifyPlayback,
+  saveSpotifyPlayback,
+  type SavedSpotifyPlayback,
+} from './spotify-playback-storage';
 
 type WebPlaybackTrack = {
   album: { images: Array<{ url: string }> };
   artists: Array<{ name: string }>;
+  id: string;
   name: string;
 };
 
@@ -43,6 +49,7 @@ type SpotifyPlayerConstructor = new (options: {
 }) => SpotifyPlayer;
 
 export type SpotifyPlayerHandle = {
+  forget: () => void;
   pause: () => void;
   play: (album: LibraryAlbum) => void;
 };
@@ -70,21 +77,33 @@ async function getPlaybackToken(): Promise<string> {
 export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   hidden?: boolean;
   initialAlbum: LibraryAlbum;
+  initialPlayback?: SavedSpotifyPlayback | null;
   onClose: () => void;
-}>(function SpotifyPlayerDock({ hidden = false, initialAlbum, onClose }, ref) {
+}>(function SpotifyPlayerDock({ hidden = false, initialAlbum, initialPlayback = null, onClose }, ref) {
+  const initialSavedTrack = initialPlayback?.albumId === initialAlbum.id
+    ? initialAlbum.tracks.find((track) => track.id === initialPlayback.trackId)
+    : undefined;
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
-  const pendingAlbumRef = useRef<{ album: LibraryAlbum; intent: number } | null>(null);
+  const pendingAlbumRef = useRef<{
+    album: LibraryAlbum;
+    intent: number;
+    resume: SavedSpotifyPlayback | null;
+  } | null>(null);
   const playbackIntentRef = useRef(0);
+  const persistenceEnabledRef = useRef(true);
   const initialAlbumRef = useRef(initialAlbum);
+  const currentAlbumRef = useRef(initialAlbumRef.current);
+  const latestPlaybackRef = useRef<SavedSpotifyPlayback | null>(initialPlayback);
   const [currentAlbum, setCurrentAlbum] = useState(initialAlbumRef.current);
   const [currentTrack, setCurrentTrack] = useState<WebPlaybackTrack | null>(null);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(initialSavedTrack?.durationMs ?? 0);
   const [error, setError] = useState('');
   const [paused, setPaused] = useState(true);
-  const [position, setPosition] = useState(0);
+  const [position, setPosition] = useState(initialPlayback?.positionMs ?? 0);
   const [scriptReady, setScriptReady] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
+  const [resumePoint, setResumePoint] = useState<SavedSpotifyPlayback | null>(initialPlayback);
   const [status, setStatus] = useState('Connecting full player…');
 
   const reportCommandError = useCallback((commandError: unknown) => {
@@ -92,15 +111,44 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     setStatus('Playback unavailable');
   }, []);
 
-  const startAlbum = useCallback(async (album: LibraryAlbum, deviceId: string, intent: number) => {
+  const persistPlayback = useCallback((
+    playback: Omit<SavedSpotifyPlayback, 'updatedAt'> | SavedSpotifyPlayback | null,
+  ) => {
+    if (!playback || !persistenceEnabledRef.current) return;
+    const saved: SavedSpotifyPlayback = { ...playback, updatedAt: Date.now() };
+    latestPlaybackRef.current = saved;
+    saveSpotifyPlayback(saved);
+  }, []);
+
+  const startAlbum = useCallback(async (
+    album: LibraryAlbum,
+    deviceId: string,
+    intent: number,
+    resume: SavedSpotifyPlayback | null,
+  ) => {
+    const resumeTrack = resume?.albumId === album.id
+      ? album.tracks.find((track) => track.id === resume.trackId)
+      : undefined;
+    currentAlbumRef.current = album;
     setCurrentAlbum(album);
+    setCurrentTrack(null);
+    setDuration(resumeTrack?.durationMs ?? 0);
+    setPaused(true);
+    setPosition(resume?.albumId === album.id ? resume.positionMs : 0);
+    setResumePoint(resume?.albumId === album.id ? resume : null);
     setStatus('Starting album…');
     setError('');
     try {
       const response = await fetch('/api/player/play', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ albumId: album.id, deviceId }),
+        body: JSON.stringify({
+          albumId: album.id,
+          deviceId,
+          ...(resume?.albumId === album.id
+            ? { positionMs: resume.positionMs, trackId: resume.trackId }
+            : {}),
+        }),
       });
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
@@ -127,26 +175,43 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     void player.pause()
       .then(() => {
         if (intent !== playbackIntentRef.current) return;
+        if (latestPlaybackRef.current) {
+          persistPlayback({
+            ...latestPlaybackRef.current,
+            paused: true,
+          });
+        }
         setPaused(true);
         setStatus('Paused');
       })
       .catch((commandError: unknown) => {
         if (intent === playbackIntentRef.current) reportCommandError(commandError);
       });
-  }, [reportCommandError]);
+  }, [persistPlayback, reportCommandError]);
 
   useImperativeHandle(ref, () => ({
+    forget() {
+      persistenceEnabledRef.current = false;
+      latestPlaybackRef.current = null;
+      pendingAlbumRef.current = null;
+      setResumePoint(null);
+    },
     pause: pausePlayback,
     play(album) {
       const intent = playbackIntentRef.current + 1;
       playbackIntentRef.current = intent;
-      pendingAlbumRef.current = { album, intent };
+      const saved = readSavedSpotifyPlayback();
+      const resume = saved?.albumId === album.id ? saved : null;
+      persistenceEnabledRef.current = true;
+      pendingAlbumRef.current = { album, intent, resume };
+      currentAlbumRef.current = album;
       setCurrentAlbum(album);
+      setResumePoint(resume);
       setError('');
       void playerRef.current?.activateElement().catch(reportCommandError);
       const deviceId = deviceIdRef.current;
       if (deviceId) {
-        void startAlbum(album, deviceId, intent);
+        void startAlbum(album, deviceId, intent, resume);
       } else {
         setStatus('Waiting for Spotify player…');
       }
@@ -184,7 +249,9 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       setStatus('Full player ready');
       const pending = pendingAlbumRef.current;
       if (pending) {
-        void startAlbum(pending.album, device_id, pending.intent);
+        void startAlbum(pending.album, device_id, pending.intent, pending.resume);
+      } else if (latestPlaybackRef.current) {
+        setStatus('Ready to resume');
       }
     });
     player.addListener('not_ready', () => {
@@ -193,10 +260,22 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     });
     player.addListener('player_state_changed', (state: WebPlaybackState | null) => {
       if (!state) return;
-      setCurrentTrack(state.track_window.current_track);
+      const track = state.track_window.current_track;
+      const album = currentAlbumRef.current;
+      const belongsToAlbum = album.tracks.some((albumTrack) => albumTrack.id === track.id);
+      setCurrentTrack(track);
       setDuration(state.duration);
       setPaused(state.paused);
       setPosition(state.position);
+      if (belongsToAlbum) {
+        persistPlayback({
+          albumId: album.id,
+          paused: state.paused,
+          positionMs: state.position,
+          trackId: track.id,
+        });
+        setResumePoint(latestPlaybackRef.current);
+      }
       setStatus(state.paused ? 'Paused' : 'Playing full track');
     });
     player.addListener('autoplay_failed', () => {
@@ -218,28 +297,87 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       player.disconnect();
       playerRef.current = null;
     };
-  }, [sdkReady, startAlbum]);
+  }, [persistPlayback, sdkReady, startAlbum]);
 
   useEffect(() => {
     if (paused || duration <= 0) return;
     let lastTick = Date.now();
     const timer = window.setInterval(() => {
       const now = Date.now();
-      setPosition((current) => Math.min(current + now - lastTick, duration));
+      setPosition((current) => {
+        const next = Math.min(current + now - lastTick, duration);
+        if (latestPlaybackRef.current) {
+          latestPlaybackRef.current = {
+            ...latestPlaybackRef.current,
+            paused: false,
+            positionMs: next,
+            updatedAt: now,
+          };
+        }
+        return next;
+      });
       lastTick = now;
     }, 500);
     return () => window.clearInterval(timer);
   }, [duration, paused]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      persistPlayback(latestPlaybackRef.current);
+    }, 5_000);
+    const persistLatest = () => persistPlayback(latestPlaybackRef.current);
+    const persistWhenHidden = () => {
+      if (document.visibilityState === 'hidden') persistLatest();
+    };
+    window.addEventListener('pagehide', persistLatest);
+    document.addEventListener('visibilitychange', persistWhenHidden);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('pagehide', persistLatest);
+      document.removeEventListener('visibilitychange', persistWhenHidden);
+      persistLatest();
+    };
+  }, [persistPlayback]);
 
   function closePlayer() {
     pausePlayback();
     onClose();
   }
 
-  const trackTitle = currentTrack?.name ?? currentAlbum.name;
+  const savedTrack = resumePoint?.albumId === currentAlbum.id
+    ? currentAlbum.tracks.find((track) => track.id === resumePoint.trackId)
+    : undefined;
+  const trackTitle = currentTrack?.name ?? savedTrack?.name ?? currentAlbum.name;
   const trackArtists = currentTrack?.artists.map((artist) => artist.name).join(', ') ?? currentAlbum.artists.join(', ');
   const artwork = currentTrack?.album.images[0]?.url ?? currentAlbum.imageUrl;
-  const controlsReady = Boolean(deviceIdRef.current && currentTrack);
+  const deviceReady = Boolean(deviceIdRef.current);
+  const controlsReady = Boolean(deviceReady && currentTrack);
+  const canPlay = Boolean(deviceReady && (currentTrack || savedTrack));
+
+  function toggleOrResume() {
+    if (currentTrack) {
+      void playerRef.current?.togglePlay().catch(reportCommandError);
+      return;
+    }
+    const deviceId = deviceIdRef.current;
+    if (!deviceId || !savedTrack || !resumePoint) return;
+    const intent = playbackIntentRef.current + 1;
+    playbackIntentRef.current = intent;
+    void playerRef.current?.activateElement()
+      .then(() => startAlbum(currentAlbum, deviceId, intent, resumePoint))
+      .catch(reportCommandError);
+  }
+
+  function seekPlayback(positionMs: number) {
+    setPosition(positionMs);
+    if (latestPlaybackRef.current) {
+      persistPlayback({
+        ...latestPlaybackRef.current,
+        positionMs,
+      });
+    }
+    void playerRef.current?.seek(positionMs).catch(reportCommandError);
+  }
   return (
     <>
       {scriptReady && (
@@ -269,8 +407,8 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
           <button
             aria-label={paused ? 'Play' : 'Pause'}
             className="player-control player-control--primary"
-            disabled={!controlsReady}
-            onClick={() => void playerRef.current?.togglePlay().catch(reportCommandError)}
+            disabled={!canPlay}
+            onClick={toggleOrResume}
             type="button"
           >{paused ? '▶' : 'Ⅱ'}</button>
           <button aria-label="Next track" className="player-control" disabled={!controlsReady} onClick={() => void playerRef.current?.nextTrack().catch(reportCommandError)} type="button">›</button>
@@ -280,7 +418,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
               aria-label="Playback position"
               disabled={!controlsReady}
               max={Math.max(duration, 1)}
-              onChange={(event) => void playerRef.current?.seek(Number(event.target.value)).catch(reportCommandError)}
+              onChange={(event) => seekPlayback(Number(event.target.value))}
               type="range"
               value={Math.min(position, Math.max(duration, 1))}
             />
