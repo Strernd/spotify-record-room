@@ -19,6 +19,7 @@ import type {
   SearchResponse,
 } from './cd-library-types';
 import { contrastColor, extractSpineColor } from '@/lib/spine-color';
+import { SpotifyPlayerDock, type SpotifyPlayerHandle } from './spotify-player-dock';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
 const ALBUMS_PER_ROW = 12;
@@ -284,10 +285,19 @@ function SearchDialog({
   );
 }
 
-function AlbumDialog({ album, onClose, onRemove }: { album: LibraryAlbum; onClose: () => void; onRemove: () => void }) {
+function AlbumDialog({
+  album,
+  onClose,
+  onPlay,
+  onRemove,
+}: {
+  album: LibraryAlbum;
+  onClose: () => void;
+  onPlay: () => void;
+  onRemove: () => void;
+}) {
   const tracks: AlbumTrack[] = album.tracks;
   const multipleDiscs = tracks.some((track) => track.discNumber > 1);
-  const [playerOpen, setPlayerOpen] = useState(false);
 
   return (
     <DialogShell label={`${album.name} by ${album.artists.join(', ')}`} onClose={onClose} wide>
@@ -307,27 +317,14 @@ function AlbumDialog({ album, onClose, onRemove }: { album: LibraryAlbum; onClos
             <p>{album.artists.join(', ')}</p>
           </div>
           <div className="album-actions">
-            <button className="button button--spotify" onClick={() => setPlayerOpen((open) => !open)} type="button">
-              <Icon name="play" /> {playerOpen ? 'Hide player' : 'Show player'}
+            <button className="button button--spotify" onClick={onPlay} type="button">
+              <Icon name="play" /> Play now
             </button>
             <a className="button button--secondary" href={album.spotifyUrl} rel="noreferrer" target="_blank">Open in Spotify</a>
             <button className="button button--danger" onClick={onRemove} type="button">
               <Icon name="trash" /> Remove
             </button>
           </div>
-
-          {playerOpen && (
-            <div className="spotify-embed">
-              <iframe
-                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="strict-origin-when-cross-origin"
-                src={`https://open.spotify.com/embed/album/${encodeURIComponent(album.id)}?utm_source=generator&theme=0`}
-                title={`Spotify player for ${album.name}`}
-              />
-            </div>
-          )}
 
           <div aria-live="polite" className="track-list-wrap">
             {tracks.length === 0 && <p className="notice">No track list is available.</p>}
@@ -380,6 +377,9 @@ export function CdLibrary() {
   const [authMessage, setAuthMessage] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<LibraryAlbum | null>(null);
+  const playerRef = useRef<SpotifyPlayerHandle>(null);
+  const [activePlayerAlbumId, setActivePlayerAlbumId] = useState<string | null>(null);
+  const [playerVisible, setPlayerVisible] = useState(true);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -432,7 +432,20 @@ export function CdLibrary() {
 
   function removeSelectedAlbum() {
     if (!selectedAlbum) return;
+    if (selectedAlbum.id === activePlayerAlbumId) {
+      playerRef.current?.pause();
+      setActivePlayerAlbumId(null);
+      setPlayerVisible(false);
+    }
     setAlbums((current) => current.filter((album) => album.id !== selectedAlbum.id));
+    setSelectedAlbum(null);
+  }
+
+  function playSelectedAlbum() {
+    if (!selectedAlbum) return;
+    playerRef.current?.play(selectedAlbum);
+    setActivePlayerAlbumId(selectedAlbum.id);
+    setPlayerVisible(true);
     setSelectedAlbum(null);
   }
 
@@ -460,7 +473,7 @@ export function CdLibrary() {
   }
 
   return (
-    <main className="library-app">
+    <main className={`library-app${albums.length > 0 && playerVisible ? ' library-app--player-open' : ''}`}>
       <header className="library-header">
         <div className="library-brand">
           <span aria-hidden="true" className="library-brand__mark"><Icon name="music" /></span>
@@ -515,8 +528,24 @@ export function CdLibrary() {
         <span>Stored locally in this browser</span>
       </footer>
 
+      {albums.length > 0 && (
+        <SpotifyPlayerDock
+          hidden={!playerVisible}
+          initialAlbum={albums[0]}
+          onClose={() => setPlayerVisible(false)}
+          ref={playerRef}
+        />
+      )}
+
       {searchOpen && <SearchDialog libraryIds={libraryIds} onAdd={addAlbum} onClose={closeSearch} />}
-      {selectedAlbum && <AlbumDialog album={selectedAlbum} onClose={closeAlbum} onRemove={removeSelectedAlbum} />}
+      {selectedAlbum && (
+        <AlbumDialog
+          album={selectedAlbum}
+          onClose={closeAlbum}
+          onPlay={playSelectedAlbum}
+          onRemove={removeSelectedAlbum}
+        />
+      )}
     </main>
   );
 }
