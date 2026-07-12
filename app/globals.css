@@ -245,6 +245,10 @@ input:focus-visible,
 }
 
 .shelf-cabinet {
+  --cd-height: 280px;
+  --cd-cell-width: 15.25px;
+  --cd-artist-size: 0.61rem;
+  --cd-title-size: 0.73rem;
   position: relative;
   width: 100%;
   padding: 20px clamp(12px, 2.2vw, 28px) 28px;
@@ -296,7 +300,7 @@ input:focus-visible,
 }
 
 .shelf-row__back {
-  height: 254px;
+  height: calc(var(--cd-height) + 36px);
   padding: 16px 12px 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -313,9 +317,9 @@ input:focus-visible,
 .shelf-row__contents {
   display: flex;
   min-width: min-content;
-  height: 238px;
+  height: calc(var(--cd-height) + 20px);
   align-items: flex-end;
-  gap: 2px;
+  gap: 0;
 }
 
 .shelf-plank {
@@ -339,7 +343,7 @@ input:focus-visible,
 }
 
 .cd-spine-wrap {
-  height: 226px;
+  height: calc(var(--cd-height) + 8px);
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
@@ -347,8 +351,8 @@ input:focus-visible,
 
 .cd-spine {
   position: relative;
-  width: 24px;
-  height: 222px;
+  width: var(--cd-cell-width);
+  height: var(--cd-height);
   padding: 0;
   overflow: visible;
   border: 0;
@@ -446,7 +450,7 @@ input:focus-visible,
   top: 50%;
   left: 50%;
   display: flex;
-  width: 197px;
+  width: calc(var(--cd-height) - 26px);
   min-width: 0;
   align-items: baseline;
   gap: 6px;
@@ -469,7 +473,7 @@ input:focus-visible,
 .cd-spine__artist {
   max-width: 42%;
   flex: 0 1 auto;
-  font-size: 0.55rem;
+  font-size: var(--cd-artist-size);
   font-weight: 760;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -479,7 +483,7 @@ input:focus-visible,
 .cd-spine__title {
   flex: 1 1 auto;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.66rem;
+  font-size: var(--cd-title-size);
   font-style: italic;
   line-height: 1;
 }
@@ -721,6 +725,19 @@ input:focus-visible,
 .album-detail__heading h2 { font-size: clamp(1.8rem, 4vw, 3.1rem); overflow-wrap: anywhere; }
 .album-actions { gap: 8px; flex-wrap: wrap; margin: 22px 0; }
 
+.spotify-embed {
+  margin: -8px 0 22px;
+}
+
+.spotify-embed iframe {
+  display: block;
+  width: 100%;
+  height: 352px;
+  border: 0;
+  border-radius: 12px;
+  background: #121212;
+}
+
 .track-list-wrap {
   max-height: 390px;
   overflow-y: auto;
@@ -749,16 +766,16 @@ input:focus-visible,
 }
 
 @media (max-width: 620px) {
+  .shelf-cabinet {
+    --cd-height: 250px;
+    --cd-cell-width: 13.75px;
+    --cd-artist-size: 0.56rem;
+    --cd-title-size: 0.67rem;
+  }
   .library-header { display: grid; }
   .library-header__actions { max-width: none; justify-content: flex-start; }
   .library-header__actions .button { min-height: 39px; padding-inline: 13px; }
-  .shelf-row__back { height: 236px; padding-inline: 8px; }
-  .shelf-row__contents { height: 220px; }
-  .cd-spine-wrap { height: 208px; }
-  .cd-spine { width: 24px; height: 204px; }
-  .cd-spine__label { width: 180px; }
-  .cd-spine__artist { font-size: 0.5rem; }
-  .cd-spine__title { font-size: 0.6rem; }
+  .shelf-row__back { padding-inline: 8px; }
   .empty-shelf { min-height: 176px; padding: 17px; }
   .empty-shelf__icon { display: none; }
   .empty-shelf { flex-wrap: wrap; }
@@ -772,6 +789,7 @@ input:focus-visible,
   .album-detail__cover-wrap { width: min(72vw, 270px); margin: 0 auto; }
   .album-detail__heading { padding-top: 0; }
   .track-list-wrap { max-height: none; }
+  .spotify-embed iframe { height: 152px; }
   .library-footer { flex-direction: column; gap: 3px; }
 }
 

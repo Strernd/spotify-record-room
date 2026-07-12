@@ -127,7 +127,7 @@ function DialogShell({
       if (event.key !== 'Tab' || !panelRef.current) return;
       const focusable = Array.from(
         panelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'a[href], button:not([disabled]), input:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
         ),
       );
       if (focusable.length === 0) {
@@ -287,6 +287,7 @@ function SearchDialog({
 function AlbumDialog({ album, onClose, onRemove }: { album: LibraryAlbum; onClose: () => void; onRemove: () => void }) {
   const tracks: AlbumTrack[] = album.tracks;
   const multipleDiscs = tracks.some((track) => track.discNumber > 1);
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   return (
     <DialogShell label={`${album.name} by ${album.artists.join(', ')}`} onClose={onClose} wide>
@@ -306,13 +307,27 @@ function AlbumDialog({ album, onClose, onRemove }: { album: LibraryAlbum; onClos
             <p>{album.artists.join(', ')}</p>
           </div>
           <div className="album-actions">
-            <a className="button button--spotify" href={album.spotifyUrl} rel="noreferrer" target="_blank">
-              <Icon name="play" /> Play on Spotify
-            </a>
+            <button className="button button--spotify" onClick={() => setPlayerOpen((open) => !open)} type="button">
+              <Icon name="play" /> {playerOpen ? 'Hide player' : 'Show player'}
+            </button>
+            <a className="button button--secondary" href={album.spotifyUrl} rel="noreferrer" target="_blank">Open in Spotify</a>
             <button className="button button--danger" onClick={onRemove} type="button">
               <Icon name="trash" /> Remove
             </button>
           </div>
+
+          {playerOpen && (
+            <div className="spotify-embed">
+              <iframe
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+                src={`https://open.spotify.com/embed/album/${encodeURIComponent(album.id)}?utm_source=generator&theme=0`}
+                title={`Spotify player for ${album.name}`}
+              />
+            </div>
+          )}
 
           <div aria-live="polite" className="track-list-wrap">
             {tracks.length === 0 && <p className="notice">No track list is available.</p>}
