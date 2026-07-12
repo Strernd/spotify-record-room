@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const params = new URLSearchParams({ q: query, type: "album", limit: "20" });
+    const params = new URLSearchParams({ q: query, type: "album", limit: "10" });
     const result = await spotifyFetch<SearchResponse>(`/search?${params.toString()}`);
     return Response.json({ albums: result.albums.items.map(normalizeAlbum) });
   } catch (error) {
