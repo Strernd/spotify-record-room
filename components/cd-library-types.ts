@@ -9,5 +9,10 @@ export type {
 } from '@/lib/spotify-contracts';
 
 export type LibraryAlbum = AlbumDetail & {
+  addedAt: string;
   spineColor: string;
+};
+
+export type StoredLibraryAlbum = Omit<LibraryAlbum, 'addedAt'> & {
+  addedAt?: string;
 };

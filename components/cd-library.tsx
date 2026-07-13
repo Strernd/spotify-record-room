@@ -25,7 +25,18 @@ import {
   readSavedSpotifyPlayback,
   type SavedSpotifyPlayback,
 } from './spotify-playback-storage';
-import { createLibraryExport, mergeAlbumsPreferImported, parseLibraryExport } from './library-transfer';
+import {
+  createLibraryExport,
+  isStoredLibraryAlbum,
+  mergeAlbumsPreferImported,
+  normalizeAlbumAddedAt,
+  parseLibraryExport,
+} from './library-transfer';
+import {
+  LIBRARY_SORT_OPTIONS,
+  sortLibraryAlbums,
+  type LibrarySort,
+} from './library-sort';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
 const DEFAULT_ALBUMS_PER_ROW = 12;
@@ -39,14 +50,7 @@ function readLibrary(): LibraryAlbum[] {
     if (!value) return [];
     const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (album): album is LibraryAlbum =>
-            typeof album === 'object' &&
-            album !== null &&
-            typeof (album as LibraryAlbum).id === 'string' &&
-            typeof (album as LibraryAlbum).spineColor === 'string' &&
-            Array.isArray((album as LibraryAlbum).tracks),
-        )
+      ? normalizeAlbumAddedAt(parsed.filter(isStoredLibraryAlbum))
       : [];
   } catch {
     return [];
@@ -419,6 +423,7 @@ function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void })
 export function CdLibrary() {
   const [albums, setAlbums] = useState<LibraryAlbum[]>([]);
   const [albumsPerRow, setAlbumsPerRow] = useState(DEFAULT_ALBUMS_PER_ROW);
+  const [librarySort, setLibrarySort] = useState<LibrarySort>('shelf');
   const [hydrated, setHydrated] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [playbackReady, setPlaybackReady] = useState(false);
@@ -504,7 +509,8 @@ export function CdLibrary() {
     return () => observer.disconnect();
   }, []);
 
-  const rows = useMemo(() => chunkAlbums(albums, albumsPerRow), [albums, albumsPerRow]);
+  const displayedAlbums = useMemo(() => sortLibraryAlbums(albums, librarySort), [albums, librarySort]);
+  const rows = useMemo(() => chunkAlbums(displayedAlbums, albumsPerRow), [displayedAlbums, albumsPerRow]);
   const libraryIds = useMemo(() => new Set(albums.map((album) => album.id)), [albums]);
 
   const closeSearch = useCallback(() => setSearchOpen(false), []);
@@ -518,7 +524,7 @@ export function CdLibrary() {
     const detail = 'album' in data ? data.album : data;
     if (!detail || !Array.isArray(detail.tracks)) throw new Error('Spotify returned incomplete album details.');
     const spineColor = await extractSpineColor(detail);
-    const savedAlbum: LibraryAlbum = { ...detail, spineColor };
+    const savedAlbum: LibraryAlbum = { ...detail, addedAt: new Date().toISOString(), spineColor };
     setAlbums((current) => current.some((item) => item.id === savedAlbum.id) ? current : [...current, savedAlbum]);
   }
 
@@ -680,6 +686,23 @@ export function CdLibrary() {
           <button aria-label="Dismiss import or export message" className="icon-button" onClick={() => setTransferMessage(null)} type="button">
             <Icon name="close" />
           </button>
+        </div>
+      )}
+
+      {hydrated && albums.length > 1 && (
+        <div className="library-toolbar">
+          <label className="sort-control" htmlFor="library-sort">
+            <span>Sort by</span>
+            <select
+              id="library-sort"
+              onChange={(event) => setLibrarySort(event.target.value as LibrarySort)}
+              value={librarySort}
+            >
+              {LIBRARY_SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 
