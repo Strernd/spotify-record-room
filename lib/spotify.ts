@@ -26,6 +26,7 @@ export const SPOTIFY_PLAYBACK_SCOPES = [
   "streaming",
   "user-read-email",
   "user-read-private",
+  "user-read-playback-state",
   "user-modify-playback-state",
 ] as const;
 

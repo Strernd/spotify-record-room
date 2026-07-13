@@ -759,7 +759,7 @@ input:focus-visible,
 .album-detail__heading h2 { font-size: clamp(1.8rem, 4vw, 3.1rem); overflow-wrap: anywhere; }
 .album-actions { gap: 8px; flex-wrap: wrap; margin: 22px 0; }
 
-.library-app--player-open { padding-bottom: 238px; }
+.library-app--player-open { padding-bottom: 286px; }
 
 .player-dock {
   position: fixed;
@@ -841,6 +841,24 @@ input:focus-visible,
 .player-control--primary:hover { background: #32d66c; }
 .player-progress { display: grid; grid-template-columns: 34px minmax(90px, 1fr) 34px; align-items: center; gap: 7px; color: #bdb1a8; font-size: 0.66rem; font-variant-numeric: tabular-nums; }
 .player-progress input { width: 100%; accent-color: var(--green); cursor: pointer; }
+.player-dock__settings {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(170px, 1.2fr) minmax(130px, 1fr);
+  gap: 9px;
+  padding: 4px;
+}
+.player-dock__settings label { display: grid; gap: 3px; min-width: 0; color: #ab9f96; font-size: 0.65rem; }
+.player-dock__settings select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 26px 0 8px;
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 7px;
+  color: #fffaf0;
+  background: rgba(255,255,255,0.09);
+}
+.player-volume input { width: 100%; margin: 5px 0 0; accent-color: var(--green); }
 .player-dock__error { margin: 6px 5px 0; color: #ffaaa0; }
 .player-dock__hint { margin: 7px 5px 0; color: #ab9f96; font-size: 0.68rem; }
 
@@ -895,7 +913,7 @@ input:focus-visible,
   .album-detail__cover-wrap { width: min(72vw, 270px); margin: 0 auto; }
   .album-detail__heading { padding-top: 0; }
   .track-list-wrap { max-height: none; }
-  .library-app--player-open { padding-bottom: 232px; }
+  .library-app--player-open { padding-bottom: 326px; }
   .player-dock { bottom: 8px; width: calc(100% - 16px); padding: 9px; border-radius: 13px; }
   .player-dock__eyebrow { display: none; }
   .player-dock__meta { grid-template-columns: minmax(0, 1fr); }
@@ -905,6 +923,8 @@ input:focus-visible,
   .player-control--primary { width: 40px; height: 40px; }
   .player-progress { grid-template-columns: minmax(70px, 1fr); }
   .player-progress > span { display: none; }
+  .player-dock__settings { grid-template-columns: 1fr 1fr; }
+  .player-volume { grid-column: 1 / -1; }
   .library-footer { flex-direction: column; gap: 3px; }
 }
 

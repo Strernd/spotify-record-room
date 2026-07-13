@@ -721,7 +721,9 @@ export function CdLibrary() {
           initialAlbum={playerAlbum}
           initialPlayback={savedPlayback}
           onClose={() => setPlayerVisible(false)}
+          onPlayingAlbumChange={setActivePlayerAlbumId}
           ref={playerRef}
+          shelfAlbums={albums}
         />
       )}
 
