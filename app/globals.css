@@ -552,6 +552,36 @@ input:focus-visible,
   background: #f7e7e2;
 }
 
+.transfer-notice {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -14px 0 18px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid rgba(76, 99, 82, 0.18);
+  border-radius: 9px;
+  color: #405a47;
+  background: #e5eee7;
+  font-size: 0.82rem;
+}
+
+.transfer-notice--error {
+  border-color: rgba(160, 57, 47, 0.16);
+  color: #a0392f;
+  background: #f7e7e2;
+}
+
+.transfer-notice .icon-button {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: currentColor;
+}
+
+.transfer-notice .icon { width: 16px; height: 16px; }
+
 .loading-inline {
   gap: 9px;
   color: var(--muted);
@@ -629,6 +659,13 @@ input:focus-visible,
   line-height: 1.05;
 }
 .dialog-heading > p:last-child { margin: 8px 0 0; color: var(--muted); }
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 26px 0 14px;
+}
 
 .search-form {
   display: grid;

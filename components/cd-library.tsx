@@ -25,6 +25,7 @@ import {
   readSavedSpotifyPlayback,
   type SavedSpotifyPlayback,
 } from './spotify-playback-storage';
+import { createLibraryExport, mergeAlbumsPreferImported, parseLibraryExport } from './library-transfer';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
 const ALBUMS_PER_ROW = 12;
@@ -351,6 +352,47 @@ function AlbumDialog({
   );
 }
 
+function ImportDialog({
+  albumCount,
+  currentAlbumCount,
+  fileName,
+  onClose,
+  onMerge,
+  onReplace,
+}: {
+  albumCount: number;
+  currentAlbumCount: number;
+  fileName: string;
+  onClose: () => void;
+  onMerge: () => void;
+  onReplace: () => void;
+}) {
+  return (
+    <DialogShell label="Import library" onClose={onClose}>
+      <div className="dialog-heading">
+        <p className="eyebrow">Library import</p>
+        <h2>How should this library be imported?</h2>
+        <p>
+          {fileName} contains {albumCount} {albumCount === 1 ? 'album' : 'albums'}. Your current library has{' '}
+          {currentAlbumCount}.
+        </p>
+      </div>
+      <div className="import-actions">
+        <button className="button button--primary" data-dialog-initial-focus onClick={onMerge} type="button">
+          Merge libraries
+        </button>
+        <button className="button button--danger" onClick={onReplace} type="button">
+          Replace library
+        </button>
+        <button className="button button--quiet" onClick={onClose} type="button">Cancel</button>
+      </div>
+      <p className="notice">
+        Merge keeps your shelf and updates matching albums from the file. Replace restores the file exactly.
+      </p>
+    </DialogShell>
+  );
+}
+
 function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void }) {
   const background = album.spineColor;
   return (
@@ -387,6 +429,9 @@ export function CdLibrary() {
   const [activePlayerAlbumId, setActivePlayerAlbumId] = useState<string | null>(null);
   const [savedPlayback, setSavedPlayback] = useState<SavedSpotifyPlayback | null>(null);
   const [playerVisible, setPlayerVisible] = useState(true);
+  const [transferMessage, setTransferMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ albums: LibraryAlbum[]; fileName: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -496,6 +541,64 @@ export function CdLibrary() {
     else window.location.assign('/api/auth/login');
   }
 
+  function exportLibrary() {
+    const contents = createLibraryExport(albums);
+    const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `record-room-library-${new Date().toISOString().slice(0, 10)}.json`;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTransferMessage({
+      kind: 'success',
+      text: `Exported ${albums.length} ${albums.length === 1 ? 'album' : 'albums'}.`,
+    });
+  }
+
+  async function importLibrary(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!hydrated) return;
+
+    try {
+      const imported = parseLibraryExport(await file.text());
+      setPendingImport({ albums: imported, fileName: file.name });
+      setTransferMessage(null);
+    } catch (error) {
+      setTransferMessage({ kind: 'error', text: errorMessage(error, 'Could not import this library.') });
+    }
+  }
+
+  function finishImport(mode: 'merge' | 'replace') {
+    if (!pendingImport) return;
+    const imported = pendingImport.albums;
+    let message: string;
+
+    if (mode === 'merge') {
+      setAlbums((current) => mergeAlbumsPreferImported(current, imported));
+      message = `Merged ${imported.length} ${imported.length === 1 ? 'album' : 'albums'}; matching albums were updated.`;
+    } else {
+      if (activePlayerAlbumId && !imported.some((album) => album.id === activePlayerAlbumId)) {
+        playerRef.current?.pause();
+        playerRef.current?.forget();
+        clearSavedSpotifyPlayback(activePlayerAlbumId);
+        setSavedPlayback(null);
+        setActivePlayerAlbumId(null);
+        setPlayerVisible(false);
+      }
+      setSelectedAlbum(null);
+      setAlbums(imported);
+      message = `Replaced the library with ${imported.length} ${imported.length === 1 ? 'album' : 'albums'}.`;
+    }
+
+    setPendingImport(null);
+    setTransferMessage({ kind: 'success', text: message });
+  }
+
   function handleSpineKeyDown(event: ReactKeyboardEvent, album: LibraryAlbum) {
     if (event.key === 'Enter' || event.key === ' ') setSelectedAlbum(album);
   }
@@ -526,11 +629,32 @@ export function CdLibrary() {
           ) : (
             <a className="button button--spotify" href="/api/auth/login">Connect Spotify</a>
           )}
+          <input
+            accept="application/json,.json"
+            hidden
+            onChange={(event) => void importLibrary(event)}
+            ref={importInputRef}
+            type="file"
+          />
+          <button className="button button--quiet" disabled={!hydrated} onClick={() => importInputRef.current?.click()} type="button">Import</button>
+          <button className="button button--quiet" disabled={!hydrated || albums.length === 0} onClick={exportLibrary} type="button">Export</button>
           <button className="button button--primary library-add" onClick={openSearch} type="button"><Icon name="add" /> Add album</button>
         </div>
       </header>
 
       {authState === 'error' && <p className="notice notice--error auth-notice" role="alert">{authMessage}</p>}
+      {transferMessage && (
+        <div
+          aria-live="polite"
+          className={`transfer-notice${transferMessage.kind === 'error' ? ' transfer-notice--error' : ''}`}
+          role={transferMessage.kind === 'error' ? 'alert' : 'status'}
+        >
+          <span>{transferMessage.text}</span>
+          <button aria-label="Dismiss import or export message" className="icon-button" onClick={() => setTransferMessage(null)} type="button">
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
 
       <section aria-label="CD library" className="shelf-cabinet">
         <div className="shelf-cabinet__top" />
@@ -581,6 +705,16 @@ export function CdLibrary() {
           onClose={closeAlbum}
           onPlay={playSelectedAlbum}
           onRemove={removeSelectedAlbum}
+        />
+      )}
+      {pendingImport && (
+        <ImportDialog
+          albumCount={pendingImport.albums.length}
+          currentAlbumCount={albums.length}
+          fileName={pendingImport.fileName}
+          onClose={() => setPendingImport(null)}
+          onMerge={() => finishImport('merge')}
+          onReplace={() => finishImport('replace')}
         />
       )}
     </main>
