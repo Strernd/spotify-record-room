@@ -28,7 +28,7 @@ import {
 import { createLibraryExport, mergeAlbumsPreferImported, parseLibraryExport } from './library-transfer';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
-const ALBUMS_PER_ROW = 12;
+const DEFAULT_ALBUMS_PER_ROW = 12;
 const MINIMUM_SHELF_ROWS = 3;
 
 type RequestState = 'idle' | 'loading' | 'success' | 'error';
@@ -73,10 +73,10 @@ function formatDuration(milliseconds: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function chunkAlbums(albums: LibraryAlbum[]): LibraryAlbum[][] {
+function chunkAlbums(albums: LibraryAlbum[], albumsPerRow: number): LibraryAlbum[][] {
   const rows: LibraryAlbum[][] = [];
-  for (let index = 0; index < albums.length; index += ALBUMS_PER_ROW) {
-    rows.push(albums.slice(index, index + ALBUMS_PER_ROW));
+  for (let index = 0; index < albums.length; index += albumsPerRow) {
+    rows.push(albums.slice(index, index + albumsPerRow));
   }
   while (rows.length < MINIMUM_SHELF_ROWS) rows.push([]);
   return rows;
@@ -418,6 +418,7 @@ function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void })
 
 export function CdLibrary() {
   const [albums, setAlbums] = useState<LibraryAlbum[]>([]);
+  const [albumsPerRow, setAlbumsPerRow] = useState(DEFAULT_ALBUMS_PER_ROW);
   const [hydrated, setHydrated] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [playbackReady, setPlaybackReady] = useState(false);
@@ -425,6 +426,7 @@ export function CdLibrary() {
   const [authMessage, setAuthMessage] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<LibraryAlbum | null>(null);
+  const shelfRef = useRef<HTMLElement>(null);
   const playerRef = useRef<SpotifyPlayerHandle>(null);
   const [activePlayerAlbumId, setActivePlayerAlbumId] = useState<string | null>(null);
   const [savedPlayback, setSavedPlayback] = useState<SavedSpotifyPlayback | null>(null);
@@ -477,7 +479,32 @@ export function CdLibrary() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));
   }, [albums, hydrated]);
 
-  const rows = useMemo(() => chunkAlbums(albums), [albums]);
+  useEffect(() => {
+    const shelf = shelfRef.current;
+    const shelfBack = shelf?.querySelector<HTMLElement>('.shelf-row__back');
+    if (!shelf || !shelfBack) return;
+    const shelfElement = shelf;
+    const shelfBackElement = shelfBack;
+
+    function updateAlbumsPerRow() {
+      const shelfStyles = window.getComputedStyle(shelfElement);
+      const rowStyles = window.getComputedStyle(shelfBackElement);
+      const spineWidth = Number.parseFloat(shelfStyles.getPropertyValue('--cd-cell-width'));
+      const horizontalPadding = Number.parseFloat(rowStyles.paddingLeft) + Number.parseFloat(rowStyles.paddingRight);
+      const availableWidth = shelfBackElement.clientWidth - horizontalPadding;
+
+      if (!Number.isFinite(spineWidth) || spineWidth <= 0 || availableWidth <= 0) return;
+      const capacity = Math.max(1, Math.floor(availableWidth / spineWidth));
+      setAlbumsPerRow((current) => current === capacity ? current : capacity);
+    }
+
+    updateAlbumsPerRow();
+    const observer = new ResizeObserver(updateAlbumsPerRow);
+    observer.observe(shelfBackElement);
+    return () => observer.disconnect();
+  }, []);
+
+  const rows = useMemo(() => chunkAlbums(albums, albumsPerRow), [albums, albumsPerRow]);
   const libraryIds = useMemo(() => new Set(albums.map((album) => album.id)), [albums]);
 
   const closeSearch = useCallback(() => setSearchOpen(false), []);
@@ -656,7 +683,7 @@ export function CdLibrary() {
         </div>
       )}
 
-      <section aria-label="CD library" className="shelf-cabinet">
+      <section aria-label="CD library" className="shelf-cabinet" ref={shelfRef}>
         <div className="shelf-cabinet__top" />
         {rows.map((row, rowIndex) => (
           <div className="shelf-row" key={rowIndex}>

@@ -302,10 +302,7 @@ input:focus-visible,
 .shelf-row__back {
   height: calc(var(--cd-height) + 36px);
   padding: 16px 12px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(238, 181, 124, 0.35) transparent;
+  overflow: clip;
   background:
     linear-gradient(90deg, rgba(17, 6, 2, 0.4), transparent 6%, transparent 94%, rgba(17, 6, 2, 0.4)),
     radial-gradient(ellipse at 50% 120%, rgba(151, 90, 45, 0.32), transparent 55%),
