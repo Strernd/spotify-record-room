@@ -420,6 +420,23 @@ function ImportDialog({
   );
 }
 
+function AlbumSpineLabel({
+  album,
+  variant,
+}: {
+  album: LibraryAlbum;
+  variant: 'shelf' | 'table';
+}) {
+  const prefix = variant === 'shelf' ? 'cd-spine' : 'table-album';
+
+  return (
+    <span className={`${prefix}__label`}>
+      <span className={`${prefix}__artist`}>{album.artists.join(', ')}</span>
+      <span className={`${prefix}__title`}>{album.name}</span>
+    </span>
+  );
+}
+
 function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void }) {
   const background = album.spineColor;
   return (
@@ -434,24 +451,27 @@ function CdSpine({ album, onOpen }: { album: LibraryAlbum; onOpen: () => void })
     >
       <span className="cd-spine__case" style={{ backgroundColor: background }}>
         <span className="cd-spine__shine" />
-        <span className="cd-spine__label">
-          <span className="cd-spine__artist">{album.artists.join(', ')}</span>
-          <span className="cd-spine__title">{album.name}</span>
-        </span>
+        <AlbumSpineLabel album={album} variant="shelf" />
       </span>
     </button>
   );
 }
 
 function ShelfPlaceholder({ album }: { album: LibraryAlbum }) {
+  const background = album.spineColor;
+
   return (
     <span
       aria-label={`${album.name} by ${album.artists.join(', ')} is on the listening table`}
       className="cd-spine-placeholder"
       role="img"
+      style={{ color: contrastColor(background) }}
       title={`${album.name} is on the listening table`}
     >
-      <span className="cd-spine-placeholder__line" />
+      <span className="cd-spine-placeholder__line" style={{ backgroundColor: background }}>
+        <span className="cd-spine-placeholder__shine" />
+        <AlbumSpineLabel album={album} variant="shelf" />
+      </span>
     </span>
   );
 }
@@ -468,6 +488,7 @@ function ListeningTable({
   onOpenAlbum: (album: LibraryAlbum) => void;
 }) {
   const topAlbum = albums.at(-1);
+  const stackStep = Math.min(15, 220 / Math.max(albums.length - 1, 1));
 
   return (
     <aside aria-label="Listening table" className="listening-table">
@@ -515,21 +536,18 @@ function ListeningTable({
               key={album.id}
               onClick={() => onOpenAlbum(album)}
               style={{
+                backgroundColor: album.spineColor,
+                color: contrastColor(album.spineColor),
                 '--stack-index': index,
-                '--stack-offset': `${Math.min(index, 10) * 5}px`,
-                '--stack-rotation': `${((index % 5) - 2) * 0.85}deg`,
+                '--stack-offset': `${index * stackStep}px`,
+                '--stack-shift': `${((index % 5) - 2) * 1.25}px`,
               } as React.CSSProperties}
               title={`${album.name} — ${album.artists.join(', ')}`}
               type="button"
             >
-              {album.imageUrl ? (
-                // Spotify CDN hosts are runtime data, so a native image avoids a brittle host allowlist.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img alt="" height="168" src={album.imageUrl} width="168" />
-              ) : (
-                <span className="table-album__placeholder"><Icon name="music" /></span>
-              )}
-              <span className="sr-only">{album.name}</span>
+              <span aria-hidden="true" className="table-album__case-edge" />
+              <span aria-hidden="true" className="table-album__shine" />
+              <AlbumSpineLabel album={album} variant="table" />
             </button>
           ))}
         </div>
