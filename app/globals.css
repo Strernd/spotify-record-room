@@ -253,6 +253,7 @@ select:focus-visible,
 }
 
 .room-scene {
+  --cd-case-length: 280px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 286px;
   align-items: end;
@@ -279,7 +280,7 @@ select:focus-visible,
 }
 
 .shelf-cabinet {
-  --cd-height: 280px;
+  --cd-height: var(--cd-case-length);
   --cd-cell-width: 15.25px;
   --cd-artist-size: 0.61rem;
   --cd-title-size: 0.73rem;
@@ -786,9 +787,9 @@ select:focus-visible,
 .table-album {
   position: absolute;
   bottom: calc(168px + var(--stack-offset));
-  left: 25px;
+  left: calc((100% - var(--cd-case-length)) / 2);
   z-index: calc(3 + var(--stack-index));
-  width: 236px;
+  width: var(--cd-case-length);
   height: auto;
   aspect-ratio: 118 / 6;
   padding: 0;
@@ -1353,8 +1354,11 @@ select:focus-visible,
 }
 
 @media (max-width: 620px) {
+  .room-scene {
+    --cd-case-length: 250px;
+  }
+
   .shelf-cabinet {
-    --cd-height: 250px;
     --cd-cell-width: 13.75px;
     --cd-artist-size: 0.56rem;
     --cd-title-size: 0.67rem;
