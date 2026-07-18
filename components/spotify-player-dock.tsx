@@ -237,7 +237,6 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     previousTrackIdRef.current = null;
     handlingAlbumEndRef.current = false;
     setCurrentAlbum(album);
-    onPlayingAlbumChangeRef.current(album.id);
     setCurrentTrack(null);
     setDuration(resumeTrack?.durationMs ?? 0);
     setPaused(true);
@@ -265,6 +264,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
         await playerRef.current?.pause();
         return;
       }
+      onPlayingAlbumChangeRef.current(album.id);
       if (pendingAlbumRef.current?.intent === intent) pendingAlbumRef.current = null;
     } catch (playError) {
       if (intent !== playbackIntentRef.current) return;
