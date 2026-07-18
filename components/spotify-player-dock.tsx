@@ -4,6 +4,7 @@ import Script from 'next/script';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import type { LibraryAlbum } from './cd-library-types';
+import type { AlbumStartSource } from './listening-table-state';
 import {
   readSavedSpotifyPlayback,
   saveSpotifyPlayback,
@@ -68,6 +69,13 @@ type PlaybackDevice = {
 
 type PlaybackSnapshot = WebPlaybackState & { deviceId: string | null };
 
+type AlbumStartRequest = {
+  album: LibraryAlbum;
+  intent: number;
+  resume: SavedSpotifyPlayback | null;
+  source: AlbumStartSource;
+};
+
 const END_BEHAVIOR_KEY = 'spotify-cd-shelves.album-end.v1';
 const VOLUME_KEY = 'spotify-cd-shelves.volume.v1';
 const DEFAULT_VOLUME = 0.35;
@@ -125,7 +133,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   initialAlbum: LibraryAlbum;
   initialPlayback?: SavedSpotifyPlayback | null;
   onClose: () => void;
-  onPlayingAlbumChange: (albumId: string) => void;
+  onPlayingAlbumChange: (albumId: string, source: AlbumStartSource) => void;
   shelfAlbums: LibraryAlbum[];
 }>(function SpotifyPlayerDock({
   hidden = false,
@@ -140,11 +148,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     : undefined;
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
-  const pendingAlbumRef = useRef<{
-    album: LibraryAlbum;
-    intent: number;
-    resume: SavedSpotifyPlayback | null;
-  } | null>(null);
+  const pendingAlbumRef = useRef<AlbumStartRequest | null>(null);
   const playbackIntentRef = useRef(0);
   const outputDeviceIdRef = useRef<string | null>(null);
   const previousPositionRef = useRef(0);
@@ -224,11 +228,10 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   }, []);
 
   const startAlbum = useCallback(async (
-    album: LibraryAlbum,
+    request: AlbumStartRequest,
     deviceId: string,
-    intent: number,
-    resume: SavedSpotifyPlayback | null,
   ) => {
+    const { album, intent, resume, source } = request;
     const resumeTrack = resume?.albumId === album.id
       ? album.tracks.find((track) => track.id === resume.trackId)
       : undefined;
@@ -264,7 +267,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
         await playerRef.current?.pause();
         return;
       }
-      onPlayingAlbumChangeRef.current(album.id);
+      onPlayingAlbumChangeRef.current(album.id, source);
       if (pendingAlbumRef.current?.intent === intent) pendingAlbumRef.current = null;
     } catch (playError) {
       if (intent !== playbackIntentRef.current) return;
@@ -288,7 +291,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       if (nextAlbum) {
         const intent = playbackIntentRef.current + 1;
         playbackIntentRef.current = intent;
-        await startAlbum(nextAlbum, deviceId, intent, null);
+        await startAlbum({ album: nextAlbum, intent, resume: null, source: 'autoplay' }, deviceId);
         return;
       }
       setStatus('End of shelf');
@@ -373,8 +376,9 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       playbackIntentRef.current = intent;
       const saved = readSavedSpotifyPlayback();
       const resume = saved?.albumId === album.id ? saved : null;
+      const request: AlbumStartRequest = { album, intent, resume, source: 'manual' };
       persistenceEnabledRef.current = true;
-      pendingAlbumRef.current = { album, intent, resume };
+      pendingAlbumRef.current = request;
       currentAlbumRef.current = album;
       setCurrentAlbum(album);
       setResumePoint(resume);
@@ -382,7 +386,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       void playerRef.current?.activateElement().catch(reportCommandError);
       const deviceId = outputDeviceIdRef.current;
       if (deviceId) {
-        void startAlbum(album, deviceId, intent, resume);
+        void startAlbum(request, deviceId);
       } else {
         setStatus('Waiting for a Spotify device…');
       }
@@ -429,7 +433,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
         setStatus(latestPlaybackRef.current ? 'Ready to resume' : 'Full player ready');
         const pending = pendingAlbumRef.current;
         if (pending && selectedDeviceId) {
-          void startAlbum(pending.album, selectedDeviceId, pending.intent, pending.resume);
+          void startAlbum(pending, selectedDeviceId);
         }
       });
     });
@@ -566,7 +570,12 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     const intent = playbackIntentRef.current + 1;
     playbackIntentRef.current = intent;
     void playerRef.current?.activateElement()
-      .then(() => startAlbum(currentAlbum, deviceId, intent, resumePoint))
+      .then(() => startAlbum({
+        album: currentAlbum,
+        intent,
+        resume: resumePoint,
+        source: 'manual',
+      }, deviceId))
       .catch(reportCommandError);
   }
 

@@ -38,9 +38,10 @@ import {
   type LibrarySort,
 } from './library-sort';
 import {
-  addAlbumToTable,
+  type AlbumStartSource,
   normalizeTableAlbumIds,
   returnAlbumToShelf,
+  updateTableForAlbumStart,
 } from './listening-table-state';
 
 const STORAGE_KEY = 'spotify-cd-shelves.library.v1';
@@ -724,9 +725,9 @@ export function CdLibrary() {
     setSelectedAlbum(null);
   }
 
-  const handlePlayingAlbumChange = useCallback((albumId: string) => {
+  const handlePlayingAlbumChange = useCallback((albumId: string, source: AlbumStartSource) => {
     setActivePlayerAlbumId(albumId);
-    setTableAlbumIds((current) => addAlbumToTable(current, albumId));
+    setTableAlbumIds((current) => updateTableForAlbumStart(current, albumId, source));
   }, []);
 
   async function logOut() {

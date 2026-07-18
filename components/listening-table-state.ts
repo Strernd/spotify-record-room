@@ -1,3 +1,5 @@
+export type AlbumStartSource = 'manual' | 'autoplay';
+
 export function normalizeTableAlbumIds(value: unknown, libraryAlbumIds: string[]): string[] {
   if (!Array.isArray(value)) return [];
 
@@ -21,6 +23,14 @@ function withoutAlbum(tableAlbumIds: string[], albumId: string): string[] {
 
 export function addAlbumToTable(tableAlbumIds: string[], albumId: string): string[] {
   return [...withoutAlbum(tableAlbumIds, albumId), albumId];
+}
+
+export function updateTableForAlbumStart(
+  tableAlbumIds: string[],
+  albumId: string,
+  source: AlbumStartSource,
+): string[] {
+  return source === 'manual' ? addAlbumToTable(tableAlbumIds, albumId) : tableAlbumIds;
 }
 
 export function returnAlbumToShelf(tableAlbumIds: string[], albumId: string): string[] {
