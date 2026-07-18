@@ -2,7 +2,6 @@
 
 import {
   type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -50,6 +49,9 @@ const DEFAULT_ALBUMS_PER_ROW = 12;
 const MINIMUM_SHELF_ROWS = 3;
 
 type RequestState = 'idle' | 'loading' | 'success' | 'error';
+type ZoomTarget =
+  | { kind: 'shelf'; albumIds: string[]; rowNumber: number }
+  | { kind: 'table' };
 
 function readLibrary(): LibraryAlbum[] {
   try {
@@ -102,10 +104,11 @@ function chunkAlbums(albums: LibraryAlbum[], albumsPerRow: number): LibraryAlbum
   return rows;
 }
 
-function Icon({ name }: { name: 'add' | 'close' | 'music' | 'play' | 'return' | 'search' | 'trash' }) {
+function Icon({ name }: { name: 'add' | 'close' | 'expand' | 'music' | 'play' | 'return' | 'search' | 'trash' }) {
   const paths = {
     add: <path d="M12 5v14M5 12h14" />,
     close: <path d="m6 6 12 12M18 6 6 18" />,
+    expand: <path d="M8 3H3v5M16 3h5v5M8 21H3v-5m13 5h5v-5M3 8l6-6m12 6-6-6M3 16l6 6m12-6-6 6" />,
     music: <path d="M9 18V5l10-2v13M9 18a3 3 0 1 1-3-3h3m10 1a3 3 0 1 1-3-3h3" />,
     play: <path d="m9 7 8 5-8 5V7Z" />,
     return: <path d="M9 7 4 12l5 5M5 12h10a5 5 0 0 1 5 5M4 20h16" />,
@@ -477,19 +480,81 @@ function ShelfPlaceholder({ album }: { album: LibraryAlbum }) {
   );
 }
 
+function ShelfAlbumRow({
+  albums,
+  onOpenAlbum,
+  tableAlbumIds,
+}: {
+  albums: LibraryAlbum[];
+  onOpenAlbum: (album: LibraryAlbum) => void;
+  tableAlbumIds: Set<string>;
+}) {
+  return albums.map((album) => {
+    const isOnTable = tableAlbumIds.has(album.id);
+    return (
+      <div
+        className={`cd-spine-wrap${isOnTable ? ' cd-spine-wrap--on-table' : ''}`}
+        key={album.id}
+      >
+        {isOnTable
+          ? <ShelfPlaceholder album={album} />
+          : <CdSpine album={album} onOpen={() => onOpenAlbum(album)} />}
+      </div>
+    );
+  });
+}
+
+function TableAlbumButtons({
+  activeAlbumId,
+  albums,
+  onOpenAlbum,
+  variant = 'table',
+}: {
+  activeAlbumId: string | null;
+  albums: LibraryAlbum[];
+  onOpenAlbum: (album: LibraryAlbum) => void;
+  variant?: 'table' | 'zoom';
+}) {
+  const stackStep = Math.min(10.5, 220 / Math.max(albums.length - 1, 1));
+  const shiftScale = variant === 'zoom' ? 4 : 1.25;
+
+  return albums.map((album, index) => (
+    <button
+      aria-label={`Open ${album.name} by ${album.artists.join(', ')} on the listening table`}
+      className={`table-album${album.id === activeAlbumId ? ' table-album--active' : ''}`}
+      key={album.id}
+      onClick={() => onOpenAlbum(album)}
+      style={{
+        backgroundColor: album.spineColor,
+        color: contrastColor(album.spineColor),
+        '--stack-index': index,
+        '--stack-offset': `${index * stackStep}px`,
+        '--stack-shift': `${((index % 5) - 2) * shiftScale}px`,
+      } as React.CSSProperties}
+      title={`${album.name} — ${album.artists.join(', ')}`}
+      type="button"
+    >
+      <span aria-hidden="true" className="table-album__case-edge" />
+      <span aria-hidden="true" className="table-album__shine" />
+      <AlbumSpineLabel album={album} variant="table" />
+    </button>
+  ));
+}
+
 function ListeningTable({
   albums,
   activeAlbumId,
   onCleanUp,
   onOpenAlbum,
+  onZoom,
 }: {
   albums: LibraryAlbum[];
   activeAlbumId: string | null;
   onCleanUp: () => void;
   onOpenAlbum: (album: LibraryAlbum) => void;
+  onZoom: () => void;
 }) {
   const topAlbum = albums.at(-1);
-  const stackStep = Math.min(10.5, 220 / Math.max(albums.length - 1, 1));
 
   return (
     <aside aria-label="Listening table" className="listening-table">
@@ -498,14 +563,26 @@ function ListeningTable({
           <p className="eyebrow">Now spinning</p>
           <h2>Listening table</h2>
         </div>
-        <button
-          className="button button--quiet listening-table__cleanup"
-          disabled={albums.length === 0}
-          onClick={onCleanUp}
-          type="button"
-        >
-          <Icon name="return" /> Clean up
-        </button>
+        <div className="listening-table__heading-actions">
+          <button
+            aria-label="Show the table stack full screen"
+            className="icon-button listening-table__zoom"
+            disabled={albums.length === 0}
+            onClick={onZoom}
+            title="Show table stack full screen"
+            type="button"
+          >
+            <Icon name="expand" />
+          </button>
+          <button
+            className="button button--quiet listening-table__cleanup"
+            disabled={albums.length === 0}
+            onClick={onCleanUp}
+            type="button"
+          >
+            <Icon name="return" /> Clean up
+          </button>
+        </div>
       </div>
 
       <div className="listening-table__scene">
@@ -530,27 +607,11 @@ function ListeningTable({
               <span>Play an album and leave the case here.</span>
             </div>
           )}
-          {albums.map((album, index) => (
-            <button
-              aria-label={`Open ${album.name} by ${album.artists.join(', ')} on the listening table`}
-              className={`table-album${album.id === activeAlbumId ? ' table-album--active' : ''}`}
-              key={album.id}
-              onClick={() => onOpenAlbum(album)}
-              style={{
-                backgroundColor: album.spineColor,
-                color: contrastColor(album.spineColor),
-                '--stack-index': index,
-                '--stack-offset': `${index * stackStep}px`,
-                '--stack-shift': `${((index % 5) - 2) * 1.25}px`,
-              } as React.CSSProperties}
-              title={`${album.name} — ${album.artists.join(', ')}`}
-              type="button"
-            >
-              <span aria-hidden="true" className="table-album__case-edge" />
-              <span aria-hidden="true" className="table-album__shine" />
-              <AlbumSpineLabel album={album} variant="table" />
-            </button>
-          ))}
+          <TableAlbumButtons
+            activeAlbumId={activeAlbumId}
+            albums={albums}
+            onOpenAlbum={onOpenAlbum}
+          />
         </div>
 
         <div aria-hidden="true" className="listening-table__furniture">
@@ -570,6 +631,124 @@ function ListeningTable({
   );
 }
 
+function ZoomMode({
+  activeAlbumId,
+  albums,
+  onClose,
+  onOpenAlbum,
+  tableAlbumIds,
+  tableAlbums,
+  target,
+}: {
+  activeAlbumId: string | null;
+  albums: LibraryAlbum[];
+  onClose: () => void;
+  onOpenAlbum: (album: LibraryAlbum) => void;
+  tableAlbumIds: Set<string>;
+  tableAlbums: LibraryAlbum[];
+  target: ZoomTarget;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const zoomedShelfAlbums = target.kind === 'shelf'
+    ? target.albumIds
+        .map((albumId) => albums.find((album) => album.id === albumId))
+        .filter((album): album is LibraryAlbum => Boolean(album))
+    : [];
+  const zoomedTableAlbums = target.kind === 'table' ? tableAlbums : [];
+  const albumCount = target.kind === 'shelf' ? zoomedShelfAlbums.length : zoomedTableAlbums.length;
+  const title = target.kind === 'shelf' ? `Shelf row ${target.rowNumber}` : 'Listening table';
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = 'hidden';
+    panelRef.current?.querySelector<HTMLElement>('button:not([disabled])')?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      aria-labelledby="zoom-mode-title"
+      aria-modal="true"
+      className="zoom-mode"
+      ref={panelRef}
+      role="dialog"
+      tabIndex={-1}
+    >
+      <header className="zoom-mode__header">
+        <div>
+          <p className="eyebrow">Zoom mode</p>
+          <h2 id="zoom-mode-title">{title}</h2>
+          <p>{albumCount} {albumCount === 1 ? 'album' : 'albums'} · Select a spine to open it</p>
+        </div>
+        <button aria-label="Close zoom mode" className="button zoom-mode__close" onClick={onClose} type="button">
+          <Icon name="close" /> Close
+        </button>
+      </header>
+
+      {target.kind === 'shelf' ? (
+        <div className="zoom-mode__viewport zoom-mode__viewport--shelf">
+          <div className="zoom-shelf-row">
+            <div className="zoom-shelf-row__back">
+              <div className="shelf-row__contents">
+                <ShelfAlbumRow
+                  albums={zoomedShelfAlbums}
+                  onOpenAlbum={onOpenAlbum}
+                  tableAlbumIds={tableAlbumIds}
+                />
+              </div>
+            </div>
+            <div aria-hidden="true" className="shelf-plank"><span /></div>
+          </div>
+        </div>
+      ) : (
+        <div className="zoom-mode__viewport zoom-mode__viewport--table">
+          <div className="zoom-table-stack" aria-label={`${zoomedTableAlbums.length} albums on the listening table`}>
+            <div className="zoom-table-stack__albums">
+              <TableAlbumButtons
+                activeAlbumId={activeAlbumId}
+                albums={zoomedTableAlbums}
+                onOpenAlbum={onOpenAlbum}
+                variant="zoom"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CdLibrary() {
   const [albums, setAlbums] = useState<LibraryAlbum[]>([]);
   const [tableAlbumIds, setTableAlbumIds] = useState<string[]>([]);
@@ -582,6 +761,7 @@ export function CdLibrary() {
   const [authMessage, setAuthMessage] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<LibraryAlbum | null>(null);
+  const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
   const shelfRef = useRef<HTMLElement>(null);
   const playerRef = useRef<SpotifyPlayerHandle>(null);
   const [activePlayerAlbumId, setActivePlayerAlbumId] = useState<string | null>(null);
@@ -679,6 +859,7 @@ export function CdLibrary() {
 
   const closeSearch = useCallback(() => setSearchOpen(false), []);
   const closeAlbum = useCallback(() => setSelectedAlbum(null), []);
+  const closeZoom = useCallback(() => setZoomTarget(null), []);
 
   async function addAlbum(album: AlbumSummary) {
     if (libraryIds.has(album.id)) return;
@@ -809,8 +990,9 @@ export function CdLibrary() {
     setTransferMessage({ kind: 'success', text: message });
   }
 
-  function handleSpineKeyDown(event: ReactKeyboardEvent, album: LibraryAlbum) {
-    if (event.key === 'Enter' || event.key === ' ') setSelectedAlbum(album);
+  function openAlbumFromZoom(album: LibraryAlbum) {
+    setZoomTarget(null);
+    setSelectedAlbum(album);
   }
 
   const playerAlbum =
@@ -888,22 +1070,28 @@ export function CdLibrary() {
           <div className="shelf-cabinet__top" />
           {rows.map((row, rowIndex) => (
             <div className="shelf-row" key={rowIndex}>
+              {row.length > 0 && (
+                <button
+                  aria-label={`Zoom shelf row ${rowIndex + 1}`}
+                  className="button shelf-row__zoom"
+                  onClick={() => setZoomTarget({
+                    kind: 'shelf',
+                    albumIds: row.map((album) => album.id),
+                    rowNumber: rowIndex + 1,
+                  })}
+                  title={`Zoom shelf row ${rowIndex + 1}`}
+                  type="button"
+                >
+                  <Icon name="expand" /> Zoom row
+                </button>
+              )}
               <div className="shelf-row__back">
                 <div className="shelf-row__contents">
-                  {row.map((album) => {
-                    const isOnTable = tableAlbumIdSet.has(album.id);
-                    return (
-                      <div
-                        className={`cd-spine-wrap${isOnTable ? ' cd-spine-wrap--on-table' : ''}`}
-                        key={album.id}
-                        onKeyDown={isOnTable ? undefined : (event) => handleSpineKeyDown(event, album)}
-                      >
-                        {isOnTable
-                          ? <ShelfPlaceholder album={album} />
-                          : <CdSpine album={album} onOpen={() => setSelectedAlbum(album)} />}
-                      </div>
-                    );
-                  })}
+                  <ShelfAlbumRow
+                    albums={row}
+                    onOpenAlbum={setSelectedAlbum}
+                    tableAlbumIds={tableAlbumIdSet}
+                  />
                   {rowIndex === 0 && albums.length === 0 && hydrated && (
                     <div className="empty-shelf">
                       <span aria-hidden="true" className="empty-shelf__icon"><Icon name="music" /></span>
@@ -925,6 +1113,7 @@ export function CdLibrary() {
           albums={tableAlbums}
           onCleanUp={() => setTableAlbumIds([])}
           onOpenAlbum={setSelectedAlbum}
+          onZoom={() => setZoomTarget({ kind: 'table' })}
         />
       </div>
 
@@ -950,6 +1139,17 @@ export function CdLibrary() {
       )}
 
       {searchOpen && <SearchDialog libraryIds={libraryIds} onAdd={addAlbum} onClose={closeSearch} />}
+      {zoomTarget && (
+        <ZoomMode
+          activeAlbumId={activePlayerAlbumId}
+          albums={albums}
+          onClose={closeZoom}
+          onOpenAlbum={openAlbumFromZoom}
+          tableAlbumIds={tableAlbumIdSet}
+          tableAlbums={tableAlbums}
+          target={zoomTarget}
+        />
+      )}
       {selectedAlbum && (
         <AlbumDialog
           album={selectedAlbum}
