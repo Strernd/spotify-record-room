@@ -488,7 +488,7 @@ function ListeningTable({
   onOpenAlbum: (album: LibraryAlbum) => void;
 }) {
   const topAlbum = albums.at(-1);
-  const stackStep = Math.min(15, 220 / Math.max(albums.length - 1, 1));
+  const stackStep = Math.min(10.5, 220 / Math.max(albums.length - 1, 1));
 
   return (
     <aside aria-label="Listening table" className="listening-table">

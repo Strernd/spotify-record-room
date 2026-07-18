@@ -786,10 +786,11 @@ select:focus-visible,
 .table-album {
   position: absolute;
   bottom: calc(168px + var(--stack-offset));
-  left: 38px;
+  left: 25px;
   z-index: calc(3 + var(--stack-index));
-  width: 212px;
-  height: 22px;
+  width: 236px;
+  height: auto;
+  aspect-ratio: 118 / 6;
   padding: 0;
   overflow: hidden;
   border: 1px solid rgba(29, 25, 22, 0.66);
@@ -827,7 +828,7 @@ select:focus-visible,
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 2;
-  width: 11px;
+  width: 9px;
   border-right: 1px solid rgba(22, 28, 31, 0.36);
   background:
     linear-gradient(90deg, rgba(255,255,255,0.55), transparent 45%, rgba(0,0,0,0.18)),
@@ -851,8 +852,8 @@ select:focus-visible,
   height: 100%;
   min-width: 0;
   align-items: center;
-  gap: 7px;
-  padding: 0 11px 0 15px;
+  gap: 5px;
+  padding: 0 9px 0 13px;
   line-height: 1;
   pointer-events: none;
   text-shadow: 0 1px rgba(255,255,255,0.12);
@@ -870,7 +871,7 @@ select:focus-visible,
 .table-album__artist {
   max-width: 40%;
   flex: 0 1 auto;
-  font-size: 0.48rem;
+  font-size: 0.4rem;
   font-weight: 790;
   letter-spacing: 0.075em;
   text-transform: uppercase;
@@ -879,7 +880,7 @@ select:focus-visible,
 .table-album__title {
   flex: 1 1 auto;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.62rem;
+  font-size: 0.5rem;
   font-style: italic;
 }
 
