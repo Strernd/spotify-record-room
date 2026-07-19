@@ -654,7 +654,7 @@ function ZoomMode({
         .map((albumId) => albums.find((album) => album.id === albumId))
         .filter((album): album is LibraryAlbum => Boolean(album))
     : [];
-  const zoomedTableAlbums = target.kind === 'table' ? tableAlbums : [];
+  const zoomedTableAlbums = target.kind === 'table' ? [...tableAlbums].reverse() : [];
   const albumCount = target.kind === 'shelf' ? zoomedShelfAlbums.length : zoomedTableAlbums.length;
   const title = target.kind === 'shelf' ? `Shelf row ${target.rowNumber}` : 'Listening table';
 
