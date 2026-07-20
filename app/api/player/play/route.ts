@@ -40,6 +40,8 @@ export async function POST(request: Request) {
         position_ms: positionMs,
       }),
     });
+    const repeatParams = new URLSearchParams({ device_id: body.deviceId, state: "context" });
+    await spotifyRequest(`/me/player/repeat?${repeatParams.toString()}`, { method: "PUT" });
     return Response.json({ playing: true });
   } catch (error) {
     return spotifyErrorResponse(error);
