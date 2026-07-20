@@ -6,6 +6,7 @@ import type {
   AlbumDetail,
   AlbumSummary,
 } from "@/lib/spotify-contracts";
+import { parseRetryAfterSeconds } from "@/lib/spotify-rate-limit";
 
 export const SPOTIFY_APP_ORIGIN =
   process.env.SPOTIFY_APP_ORIGIN ?? "http://127.0.0.1:3000";
@@ -89,11 +90,13 @@ export class SpotifyAuthError extends Error {
 }
 
 export class SpotifyApiError extends Error {
+  retryAfterSeconds: number | null;
   status: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfterSeconds: number | null = null) {
     super(message);
     this.name = "SpotifyApiError";
+    this.retryAfterSeconds = retryAfterSeconds;
     this.status = status;
   }
 }
@@ -234,13 +237,16 @@ export async function spotifyRequest(path: string, init: RequestInit = {}) {
 
   if (!response.ok) {
     let message = "Spotify could not complete the request";
+    const retryAfterSeconds = response.status === 429
+      ? parseRetryAfterSeconds(response.headers.get("Retry-After"))
+      : null;
     try {
       const payload = (await response.json()) as { error?: { message?: string } };
       message = payload.error?.message || message;
     } catch {
       // Spotify occasionally returns an empty or non-JSON error response.
     }
-    throw new SpotifyApiError(response.status, message);
+    throw new SpotifyApiError(response.status, message, retryAfterSeconds);
   }
 
   return response;
@@ -287,7 +293,10 @@ export function spotifyErrorResponse(error: unknown) {
   }
   if (error instanceof SpotifyApiError) {
     const status = error.status >= 400 && error.status < 600 ? error.status : 502;
-    return Response.json({ error: error.message }, { status });
+    const headers = error.retryAfterSeconds === null
+      ? undefined
+      : { "Retry-After": String(error.retryAfterSeconds) };
+    return Response.json({ error: error.message }, { headers, status });
   }
 
   console.error("Unexpected Spotify integration error", error);

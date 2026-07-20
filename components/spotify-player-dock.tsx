@@ -6,10 +6,17 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type { LibraryAlbum } from './cd-library-types';
 import type { AlbumStartSource } from './listening-table-state';
 import {
+  DEVICE_REFRESH_INTERVAL_MS,
+  EXTERNAL_PLAYER_STATE_POLL_INTERVAL_MS,
+  shouldPollPlayerState,
+  spotifyPollDelayMs,
+} from './spotify-player-polling';
+import {
   readSavedSpotifyPlayback,
   saveSpotifyPlayback,
   type SavedSpotifyPlayback,
 } from './spotify-playback-storage';
+import { useVisibilityAwarePoll } from './use-visibility-aware-poll';
 
 type WebPlaybackTrack = {
   album: { images: Array<{ url: string }> };
@@ -65,6 +72,11 @@ type PlaybackDevice = {
   supportsVolume: boolean;
   type: string;
   volumePercent: number | null;
+};
+
+type DeviceRefreshResult = {
+  nextDelayMs: number;
+  selectedDeviceId: string | undefined;
 };
 
 type PlaybackSnapshot = WebPlaybackState & { deviceId: string | null };
@@ -154,8 +166,10 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   const previousPositionRef = useRef(0);
   const previousTrackIdRef = useRef<string | null>(null);
   const handlingAlbumEndRef = useRef(false);
+  const findingDevicesRef = useRef(false);
   const volumeRef = useRef(DEFAULT_VOLUME);
   const persistenceEnabledRef = useRef(true);
+  const mountedRef = useRef(false);
   const initialAlbumRef = useRef(initialAlbum);
   const currentAlbumRef = useRef(initialAlbumRef.current);
   const latestPlaybackRef = useRef<SavedSpotifyPlayback | null>(initialPlayback);
@@ -168,6 +182,7 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   const [error, setError] = useState('');
   const [devices, setDevices] = useState<PlaybackDevice[]>([]);
   const [endBehavior, setEndBehavior] = useState<AlbumEndBehavior>('next');
+  const [localDeviceId, setLocalDeviceId] = useState<string | null>(null);
   const [outputDeviceId, setOutputDeviceId] = useState<string | null>(null);
   const [paused, setPaused] = useState(true);
   const [position, setPosition] = useState(initialPlayback?.positionMs ?? 0);
@@ -194,37 +209,52 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     saveSpotifyPlayback(saved);
   }, []);
 
-  const refreshDevices = useCallback(async (localDeviceId?: string) => {
-    const response = await fetch('/api/player/devices', { cache: 'no-store' });
-    if (!response.ok) return;
-    const data = (await response.json()) as { devices?: PlaybackDevice[] };
-    const available = Array.isArray(data.devices) ? data.devices : [];
-    if (localDeviceId && !available.some((device) => device.id === localDeviceId)) {
-      available.push({
-        id: localDeviceId,
-        isActive: false,
-        name: 'Record Room (this browser)',
-        supportsVolume: true,
-        type: 'computer',
-        volumePercent: Math.round(volumeRef.current * 100),
-      });
-    }
-    setDevices(available);
-    const current = outputDeviceIdRef.current;
-    const selected = available.find((device) => device.id === current)
-      ?? available.find((device) => device.isActive && device.id !== localDeviceId)
-      ?? available.find((device) => device.id === localDeviceId)
-      ?? available[0];
-    if (selected && selected.id !== current) {
-      outputDeviceIdRef.current = selected.id;
-      setOutputDeviceId(selected.id);
-      if (selected.id !== localDeviceId && selected.volumePercent !== null) {
-        const nextVolume = selected.volumePercent / 100;
-        volumeRef.current = nextVolume;
-        setVolume(nextVolume);
+  const refreshDevices = useCallback(async (localDeviceId?: string): Promise<DeviceRefreshResult> => {
+    try {
+      const response = await fetch('/api/player/devices', { cache: 'no-store' });
+      const nextDelayMs = spotifyPollDelayMs(
+        response.status,
+        response.headers.get('Retry-After'),
+        DEVICE_REFRESH_INTERVAL_MS,
+      );
+      const current = outputDeviceIdRef.current;
+      if (!response.ok || !mountedRef.current) {
+        return { nextDelayMs, selectedDeviceId: current ?? undefined };
       }
+
+      const data = (await response.json()) as { devices?: PlaybackDevice[] };
+      const available = Array.isArray(data.devices) ? data.devices : [];
+      if (localDeviceId && !available.some((device) => device.id === localDeviceId)) {
+        available.push({
+          id: localDeviceId,
+          isActive: false,
+          name: 'Record Room (this browser)',
+          supportsVolume: true,
+          type: 'computer',
+          volumePercent: Math.round(volumeRef.current * 100),
+        });
+      }
+      setDevices(available);
+      const selected = available.find((device) => device.id === current)
+        ?? available.find((device) => device.isActive && device.id !== localDeviceId)
+        ?? available.find((device) => device.id === localDeviceId)
+        ?? available[0];
+      if (selected && selected.id !== current) {
+        outputDeviceIdRef.current = selected.id;
+        setOutputDeviceId(selected.id);
+        if (selected.id !== localDeviceId && selected.volumePercent !== null) {
+          const nextVolume = selected.volumePercent / 100;
+          volumeRef.current = nextVolume;
+          setVolume(nextVolume);
+        }
+      }
+      return { nextDelayMs, selectedDeviceId: selected?.id };
+    } catch {
+      return {
+        nextDelayMs: DEVICE_REFRESH_INTERVAL_MS,
+        selectedDeviceId: outputDeviceIdRef.current ?? undefined,
+      };
     }
-    return selected?.id;
   }, []);
 
   const startAlbum = useCallback(async (
@@ -394,6 +424,13 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
   }), [pausePlayback, reportCommandError, startAlbum]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const savedBehavior = readEndBehavior();
     const savedVolume = readVolume();
     endBehaviorRef.current = savedBehavior;
@@ -427,18 +464,14 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
     player.addListener('ready', ({ device_id }: { device_id: string }) => {
       if (cancelled) return;
       deviceIdRef.current = device_id;
+      findingDevicesRef.current = true;
+      setLocalDeviceId(device_id);
       setStatus('Finding Spotify devices…');
-      void refreshDevices(device_id).then((selectedDeviceId) => {
-        if (cancelled) return;
-        setStatus(latestPlaybackRef.current ? 'Ready to resume' : 'Full player ready');
-        const pending = pendingAlbumRef.current;
-        if (pending && selectedDeviceId) {
-          void startAlbum(pending, selectedDeviceId);
-        }
-      });
     });
     player.addListener('not_ready', () => {
       deviceIdRef.current = null;
+      findingDevicesRef.current = false;
+      setLocalDeviceId(null);
       setStatus('Player reconnecting…');
     });
     player.addListener('player_state_changed', (state: WebPlaybackState | null) => {
@@ -464,44 +497,66 @@ export const SpotifyPlayerDock = forwardRef<SpotifyPlayerHandle, {
       player.disconnect();
       playerRef.current = null;
     };
-  }, [applyPlaybackState, refreshDevices, sdkReady, startAlbum]);
+  }, [applyPlaybackState, sdkReady]);
 
-  useEffect(() => {
-    if (!sdkReady) return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const response = await fetch('/api/player/state', { cache: 'no-store' });
-        if (!response.ok || cancelled) return;
-        const data = (await response.json()) as { playback?: null | {
-          deviceId: string | null;
-          duration: number;
-          paused: boolean;
-          position: number;
-          track: WebPlaybackTrack;
-        } };
-        if (data.playback) {
-          applyPlaybackState({
-            deviceId: data.playback.deviceId,
-            duration: data.playback.duration,
-            paused: data.playback.paused,
-            position: data.playback.position,
-            track_window: { current_track: data.playback.track },
-          });
-        }
-      } catch {
-        // The SDK listener still controls local playback if polling is temporarily unavailable.
+  const pollPlayerState = useCallback(async () => {
+    let nextDelayMs = EXTERNAL_PLAYER_STATE_POLL_INTERVAL_MS;
+    try {
+      const response = await fetch('/api/player/state', { cache: 'no-store' });
+      nextDelayMs = spotifyPollDelayMs(response.status, response.headers.get('Retry-After'));
+      if (!response.ok || !mountedRef.current) return nextDelayMs;
+      const data = (await response.json()) as { playback?: null | {
+        deviceId: string | null;
+        duration: number;
+        paused: boolean;
+        position: number;
+        track: WebPlaybackTrack;
+      } };
+      if (data.playback) {
+        applyPlaybackState({
+          deviceId: data.playback.deviceId,
+          duration: data.playback.duration,
+          paused: data.playback.paused,
+          position: data.playback.position,
+          track_window: { current_track: data.playback.track },
+        });
       }
-    };
-    void poll();
-    const stateTimer = window.setInterval(() => void poll(), 1_500);
-    const deviceTimer = window.setInterval(() => void refreshDevices(deviceIdRef.current ?? undefined), 15_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(stateTimer);
-      window.clearInterval(deviceTimer);
-    };
-  }, [applyPlaybackState, refreshDevices, sdkReady]);
+    } catch {
+      // The SDK listener still controls local playback if polling is temporarily unavailable.
+    }
+    return nextDelayMs;
+  }, [applyPlaybackState]);
+
+  const pollDeviceList = useCallback(async () => {
+    const result = await refreshDevices(localDeviceId ?? undefined);
+    if (
+      mountedRef.current &&
+      findingDevicesRef.current &&
+      result.selectedDeviceId
+    ) {
+      findingDevicesRef.current = false;
+      setStatus(latestPlaybackRef.current ? 'Ready to resume' : 'Full player ready');
+      const pending = pendingAlbumRef.current;
+      if (pending) void startAlbum(pending, result.selectedDeviceId);
+    }
+    return result.nextDelayMs;
+  }, [localDeviceId, refreshDevices, startAlbum]);
+
+  useVisibilityAwarePoll({
+    enabled: sdkReady && shouldPollPlayerState({
+      hidden,
+      localDeviceId,
+      outputDeviceId,
+      pageVisible: true,
+    }),
+    fallbackDelayMs: EXTERNAL_PLAYER_STATE_POLL_INTERVAL_MS,
+    poll: pollPlayerState,
+  });
+  useVisibilityAwarePoll({
+    enabled: sdkReady && !hidden && Boolean(localDeviceId),
+    fallbackDelayMs: DEVICE_REFRESH_INTERVAL_MS,
+    poll: pollDeviceList,
+  });
 
   useEffect(() => {
     if (paused || duration <= 0) return;
