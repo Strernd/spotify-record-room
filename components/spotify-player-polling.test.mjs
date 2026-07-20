@@ -8,7 +8,10 @@ import {
   shouldPollPlayerState,
   spotifyPollDelayMs,
 } from './spotify-player-polling.ts';
-import { parseRetryAfterSeconds } from '../lib/spotify-rate-limit.ts';
+import {
+  parseRetryAfterSeconds,
+  spotifyRateLimitMessage,
+} from '../lib/spotify-rate-limit.ts';
 
 test('polls playback state only for a visible external device', () => {
   assert.equal(shouldPollPlayerState({
@@ -89,6 +92,17 @@ test('parses Retry-After as non-negative whole seconds', () => {
   assert.equal(parseRetryAfterSeconds('-1'), null);
   assert.equal(parseRetryAfterSeconds('later'), null);
   assert.equal(parseRetryAfterSeconds(null), null);
+});
+
+test('explains Spotify rate limits using the retry window', () => {
+  assert.equal(
+    spotifyRateLimitMessage('10939'),
+    'Spotify is rate-limiting this app. Try again in about 3h 3m.',
+  );
+  assert.equal(
+    spotifyRateLimitMessage(null),
+    'Spotify is rate-limiting this app. Please try again later.',
+  );
 });
 
 test('keeps one request in flight across scheduler restarts', async () => {
